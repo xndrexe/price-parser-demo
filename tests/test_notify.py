@@ -1,0 +1,70 @@
+from pricewatch import notify
+from pricewatch.store import Change
+
+
+def ch(kind, old=None, new=None, title="Книга <1>", upc="a"):
+    return Change("2026-10-15T09:00:00", upc, title, f"https://shop.test/{upc}?a=1&b=2", kind, old, new)
+
+
+def test_lines_for_each_kind():
+    text = notify.format_changes(
+        [
+            ch("price", "10.00", "8.50"),
+            ch("price", "8.50", "9.00"),
+            ch("stock", "5", "0"),
+            ch("stock", "0", "3"),
+            ch("stock", "5", "2"),
+            ch("new", None, "3.00"),
+            ch("gone"),
+            ch("back", None, "4.00"),
+        ]
+    )[0]
+    assert text.startswith("<b>Изменения в каталоге: 8</b>")
+    for part in (
+        "📉",
+        "£10.00 → £8.50",
+        "📈",
+        "закончился (было 5 шт)",
+        "снова в наличии, 3 шт",
+        "остаток 5 → 2 шт",
+        "новый товар, £3.00",
+        "пропал с сайта",
+        "снова на сайте, £4.00",
+    ):
+        assert part in text
+    # название и адрес экранированы под HTML Telegram
+    assert "Книга &lt;1&gt;" in text and "a=1&amp;b=2" in text
+
+
+def test_nothing_to_send():
+    assert notify.format_changes([]) == []
+
+
+def test_long_list_is_capped_and_split():
+    many = [ch("price", "10.00", "9.00", title="Т" * 300, upc=str(i)) for i in range(100)]
+    msgs = notify.format_changes(many)
+    assert all(len(m) <= notify.LIMIT for m in msgs)
+    assert len(msgs) > 1
+    assert "…и ещё 70" in msgs[-1]
+
+
+class FakeSession:
+    def __init__(self):
+        self.calls = []
+
+    def post(self, url, json, timeout):
+        self.calls.append((url, json))
+
+        class R:
+            def raise_for_status(self):
+                pass
+
+        return R()
+
+
+def test_send_telegram_payload():
+    s = FakeSession()
+    notify.send_telegram(s, "123:ABC", "42", "<b>hi</b>")
+    url, body = s.calls[0]
+    assert url == "https://api.telegram.org/bot123:ABC/sendMessage"
+    assert body["chat_id"] == "42" and body["parse_mode"] == "HTML"
