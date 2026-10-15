@@ -1,6 +1,6 @@
 import pytest
 
-from pricewatch.parse import ParseError, parse_list, parse_product
+from pricewatch.parse import ParseError, _price, _stock, parse_list, parse_product
 
 BASE = "https://books.toscrape.com/catalogue/page-1.html"
 
@@ -40,3 +40,52 @@ def test_changed_layout_is_an_error_not_empty_data():
         parse_list("<html><body>Сайт на обслуживании</body></html>", BASE)
     with pytest.raises(ParseError):
         parse_product("<html><body><h1>Новый дизайн</h1></body></html>", "u")
+
+
+@pytest.mark.parametrize(
+    "text, value",
+    [
+        ("£51.77", 51.77),
+        ("Price: £12", 12.0),
+        ("£1,234.56", 1234.56),  # тысячи через запятую
+        ("€1.234,56", 1234.56),  # европейская запись
+        ("1 234,50 ₽", 1234.5),  # тысячи через пробел
+        ("12\xa0345 ₽", 12345.0),  # неразрывный пробел
+        ("12,5 €", 12.5),
+        ("$1,234", 1234.0),
+        ("1.234.567 ₫", 1234567.0),
+    ],
+)
+def test_price_formats(text, value):
+    assert _price(text) == pytest.approx(value)
+
+
+def test_price_without_digits_is_an_error():
+    with pytest.raises(ParseError):
+        _price("Цена по запросу")
+
+
+@pytest.mark.parametrize(
+    "text, stock",
+    [("In stock (22 available)", 22), ("In stock (1 available)", 1), ("Out of stock", 0), ("In stock", 1)],
+)
+def test_stock_texts(text, stock):
+    assert _stock(text) == stock
+
+
+def test_card_without_rating_and_category(book_html):
+    html = book_html.replace("star-rating Three", "star-rating").replace('class="breadcrumb"', 'class="x"')
+    p = parse_product(html, "u")
+    assert p.rating == 0 and p.category == ""
+
+
+def test_card_without_upc_is_an_error(book_html):
+    with pytest.raises(ParseError, match="UPC"):
+        parse_product(book_html.replace("<th>UPC</th>", "<th>Code</th>"), "u")
+
+
+def test_list_links_are_absolute_and_relative_to_page():
+    html = '<article class="product_pod"><h3><a href="../book_1/index.html">x</a></h3></article>'
+    links, nxt = parse_list(html, "https://shop.test/catalogue/category/page-1.html")
+    assert links == ["https://shop.test/catalogue/book_1/index.html"]
+    assert nxt is None

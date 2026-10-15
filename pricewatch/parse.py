@@ -38,10 +38,26 @@ def parse_list(html: str, page_url: str) -> tuple[list[str], str | None]:
 
 
 def _price(text: str) -> float:
-    m = re.search(r"\d+(?:[.,]\d+)?", text.replace("\xa0", ""))
+    # Цифры вместе с разделителями: «£1,234.56», «€1.234,56», «12 345 ₽»
+    m = re.search(r"\d(?:[\d.,\s]*\d)?", text)
     if not m:
         raise ParseError(f"bad price {text!r}")
-    return float(m.group().replace(",", "."))
+    num = re.sub(r"\s", "", m.group())
+    if "," in num and "." in num:
+        # Дробная часть — после последнего разделителя, остальные делят тысячи
+        dec = "." if num.rfind(".") > num.rfind(",") else ","
+        num = num.replace("," if dec == "." else ".", "").replace(dec, ".")
+    else:
+        sep = "," if "," in num else "."
+        # «1,234» и «1.234.567» — тысячи; «51.77» и «12,5» — дробь
+        if re.fullmatch(rf"\d{{1,3}}(?:\{sep}\d{{3}})+", num) and (sep == "," or num.count(".") > 1):
+            num = num.replace(sep, "")
+        else:
+            num = num.replace(",", ".")
+    try:
+        return float(num)
+    except ValueError:
+        raise ParseError(f"bad price {text!r}") from None
 
 
 def _stock(text: str) -> int:
