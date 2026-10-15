@@ -129,3 +129,28 @@ def test_single_run_failure_is_loud(monkeypatch):
     monkeypatch.setattr(app, "run_once", lambda cfg: (_ for _ in ()).throw(RuntimeError("site down")))
     with pytest.raises(RuntimeError):
         app.main([])
+
+
+def test_pages_flag_overrides_config(monkeypatch, cfg):
+    seen = []
+    monkeypatch.setattr(app.config, "load", lambda: cfg)
+    monkeypatch.setattr(app, "run_once", lambda c: seen.append(c.max_pages) or app.RunReport(0, 0, 0, True))
+    app.main(["--pages", "5"])
+    app.main([])
+    assert seen == [5, 0]
+
+
+def test_no_telegram_without_token(cfg):
+    http = FakeHTTP(shop())
+    quiet = replace(cfg, tg_token="")
+    app.run_once(quiet, http)
+    http.pages = shop(price_a=8.0)
+    assert app.run_once(quiet, http).changes == 1
+    assert http.sent == []
+
+
+def test_partial_run_reports_errors(cfg):
+    pages = shop()
+    del pages[ROOT + "b/index.html"]
+    r = app.run_once(cfg, FakeHTTP(pages))
+    assert (r.products, r.errors, r.complete) == (1, 1, False)

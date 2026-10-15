@@ -1,3 +1,5 @@
+import pytest
+
 from pricewatch import notify
 from pricewatch.store import Change
 
@@ -68,3 +70,37 @@ def test_send_telegram_payload():
     url, body = s.calls[0]
     assert url == "https://api.telegram.org/bot123:ABC/sendMessage"
     assert body["chat_id"] == "42" and body["parse_mode"] == "HTML"
+
+
+def test_exactly_max_lines_has_no_tail():
+    msgs = notify.format_changes([ch("gone", upc=str(i)) for i in range(notify.MAX_LINES)])
+    text = "\n".join(msgs)
+    assert "…и ещё" not in text
+    assert text.count("пропал с сайта") == notify.MAX_LINES
+
+
+def test_split_keeps_every_line_and_order():
+    many = [ch("gone", title=f"T{i:02d}" + "x" * 400, upc=str(i)) for i in range(notify.MAX_LINES)]
+    msgs = notify.format_changes(many)
+    assert all(len(m) <= notify.LIMIT for m in msgs)
+    joined = "\n".join(msgs)
+    positions = [joined.index(f"T{i:02d}") for i in range(notify.MAX_LINES)]
+    assert positions == sorted(positions)
+    assert msgs[0].startswith("<b>Изменения в каталоге: 30</b>")
+
+
+def test_unknown_kind_does_not_crash():
+    assert "rating" in notify.format_changes([ch("rating", "3", "4")])[0]
+
+
+def test_send_telegram_raises_on_http_error():
+    class Bad(FakeSession):
+        def post(self, url, json, timeout):
+            class R:
+                def raise_for_status(self):
+                    raise OSError("401")
+
+            return R()
+
+    with pytest.raises(OSError):
+        notify.send_telegram(Bad(), "t", "1", "x")
