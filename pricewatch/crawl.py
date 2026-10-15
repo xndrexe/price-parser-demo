@@ -34,7 +34,14 @@ def crawl(fetch: Fetch, start_url: str, max_pages: int = 0, workers: int = 8) ->
     res = CrawlResult()
     links: list[str] = []
     url: str | None = start_url
+    visited: set[str] = set()
     while url and (not max_pages or res.pages < max_pages):
+        if url in visited:
+            # «Дальше» ведёт на уже пройденную страницу — каталог кончился, иначе обход не остановится
+            log.warning("list page loop at %s, stop", url)
+            url = None
+            break
+        visited.add(url)
         try:
             page_links, url = parse_list(fetch(url), url)
         except Exception as e:  # сеть, 404 или сменилась вёрстка — дальше идти некуда
