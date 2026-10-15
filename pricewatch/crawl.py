@@ -37,9 +37,9 @@ def crawl(fetch: Fetch, start_url: str, max_pages: int = 0, workers: int = 8) ->
     visited: set[str] = set()
     while url and (not max_pages or res.pages < max_pages):
         if url in visited:
-            # «Дальше» ведёт на уже пройденную страницу — каталог кончился, иначе обход не остановится
+            # петля в «дальше» — вёрстка сломана; обход неполный, иначе непройденное станет «пропал с сайта»
             log.warning("list page loop at %s, stop", url)
-            url = None
+            res.errors.append(f"{url}: next link loops back")
             break
         visited.add(url)
         try:

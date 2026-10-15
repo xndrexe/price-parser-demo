@@ -54,6 +54,8 @@ def test_next_link_loop_stops():
     res = crawl(fake, ROOT + "page-1.html")
     assert res.pages == 2 and len(res.products) == 6
     assert fake.hits.count(ROOT + "page-1.html") == 1
+    # петля — сломанная вёрстка: обход неполный, отметки «пропал с сайта» не будет
+    assert not res.complete and res.errors == [ROOT + "page-1.html: next link loops back"]
 
 
 def test_duplicate_links_and_upc_counted_once():
