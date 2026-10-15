@@ -154,3 +154,28 @@ def test_partial_run_reports_errors(cfg):
     del pages[ROOT + "b/index.html"]
     r = app.run_once(cfg, FakeHTTP(pages))
     assert (r.products, r.errors, r.complete) == (1, 1, False)
+
+
+def test_telegram_failure_keeps_run_and_changes(cfg, monkeypatch, caplog):
+    """Telegram лёг — запуск не падает, изменения остаются на листе «Изменения»."""
+    http = FakeHTTP(shop())
+    app.run_once(cfg, http)
+
+    def down(session, token, chat_id, text):
+        raise OSError(f"401 for url: https://api.telegram.org/bot{token}/sendMessage")
+
+    monkeypatch.setattr(app.notify, "send_telegram", down)
+    http.pages = shop(price_a=8.0)
+    with caplog.at_level("WARNING"):
+        assert app.run_once(cfg, http).changes == 1
+    assert "telegram send failed" in caplog.text and cfg.tg_token not in caplog.text
+    changes = list(load_workbook(cfg.excel_path)["Изменения"].values)
+    assert [r[1] for r in changes[1:]] == ["Цена"]
+
+
+@pytest.mark.parametrize("argv", [["--every", "-5"], ["--pages", "-1"]])
+def test_negative_flags_rejected(argv, monkeypatch):
+    monkeypatch.setattr(app, "run_once", lambda c: pytest.fail("не должен запускаться"))
+    with pytest.raises(SystemExit) as e:
+        app.main(argv)
+    assert e.value.code == 2

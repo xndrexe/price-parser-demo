@@ -104,3 +104,58 @@ def test_send_telegram_raises_on_http_error():
 
     with pytest.raises(OSError):
         notify.send_telegram(Bad(), "t", "1", "x")
+
+
+def test_huge_title_and_url_fit_one_message():
+    c = Change("2026-10-15T09:00:00", "a", "Т" * 5000, "https://shop.test/" + "x" * 5000, "gone", None, None)
+    (msg,) = notify.format_changes([c])
+    assert len(msg) <= notify.LIMIT
+    assert "…" in msg and "href" not in msg  # длинный адрес — без ссылки, название обрезано
+
+
+class Flaky:
+    """Отдаёт по очереди заданные коды ответа или исключения."""
+
+    def __init__(self, *outcomes):
+        self.outcomes = list(outcomes)
+        self.calls = 0
+
+    def post(self, url, json, timeout):
+        self.calls += 1
+        out = self.outcomes.pop(0)
+        if isinstance(out, Exception):
+            raise out
+
+        class R:
+            status_code = out
+            headers = {"Retry-After": "1"}
+
+            def raise_for_status(self):
+                if out >= 400:
+                    raise OSError(str(out))
+
+        return R()
+
+
+def test_send_retries_overload_and_connection(monkeypatch):
+    waits = []
+    monkeypatch.setattr(notify.time, "sleep", waits.append)
+    s = Flaky(429, notify.requests.ConnectionError("reset"), 200)
+    notify.send_telegram(s, "t", "1", "x")
+    assert s.calls == 3 and waits == [1.0, 4.0]  # Retry-After, затем пауза × номер попытки
+
+
+def test_send_gives_up_after_retries(monkeypatch):
+    monkeypatch.setattr(notify.time, "sleep", lambda s: None)
+    s = Flaky(502, 502, 502)
+    with pytest.raises(OSError):
+        notify.send_telegram(s, "t", "1", "x")
+    assert s.calls == notify.RETRIES
+
+
+def test_send_does_not_retry_bad_token(monkeypatch):
+    monkeypatch.setattr(notify.time, "sleep", lambda s: None)
+    s = Flaky(401)
+    with pytest.raises(OSError):
+        notify.send_telegram(s, "t", "1", "x")
+    assert s.calls == 1

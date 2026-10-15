@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import html
+import logging
+import time
 from collections.abc import Sequence
 
 import requests
@@ -11,10 +13,18 @@ from .store import Change
 
 LIMIT = 4000  # у Telegram потолок 4096 знаков на сообщение
 MAX_LINES = 30  # больше — в чат идёт сводка, подробности в таблице
+TITLE_CHARS = 200  # одно длинное название не должно вытолкнуть сообщение за потолок
+URL_CHARS = 1000
+RETRIES = 3
+
+log = logging.getLogger("pricewatch")
 
 
 def _line(c: Change) -> str:
-    name = f'<a href="{html.escape(c.url)}">{html.escape(c.title)}</a>'
+    title = c.title if len(c.title) <= TITLE_CHARS else c.title[: TITLE_CHARS - 1] + "…"
+    name = html.escape(title)
+    if len(c.url) <= URL_CHARS:
+        name = f'<a href="{html.escape(c.url)}">{name}</a>'
     match c.kind:
         case "price":
             arrow = "📉" if float(c.new) < float(c.old) else "📈"
@@ -53,10 +63,37 @@ def format_changes(changes: Sequence[Change]) -> list[str]:
     return messages
 
 
-def send_telegram(session: requests.Session, token: str, chat_id: str, text: str) -> None:
-    resp = session.post(
-        f"https://api.telegram.org/bot{token}/sendMessage",
-        json={"chat_id": chat_id, "text": text, "parse_mode": "HTML", "disable_web_page_preview": True},
-        timeout=20,
-    )
-    resp.raise_for_status()
+def send_telegram(session: requests.Session, token: str, chat_id: str, text: str, pause: float = 2.0) -> None:
+    """Отправка с повтором при перегрузке Telegram (429, 5xx) и обрыве связи; прочие ошибки — сразу."""
+    for attempt in range(1, RETRIES + 1):
+        try:
+            resp = session.post(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                json={
+                    "chat_id": chat_id,
+                    "text": text,
+                    "parse_mode": "HTML",
+                    "disable_web_page_preview": True,
+                },
+                timeout=20,
+            )
+        except requests.ConnectionError:
+            if attempt == RETRIES:
+                raise
+            time.sleep(pause * attempt)
+            continue
+        status = getattr(resp, "status_code", 200)
+        if (status == 429 or status >= 500) and attempt < RETRIES:
+            wait = _retry_after(resp) or pause * attempt
+            log.warning("telegram %s, retry in %.0fs", status, wait)
+            time.sleep(wait)
+            continue
+        resp.raise_for_status()
+        return
+
+
+def _retry_after(resp: requests.Response) -> float:
+    try:
+        return min(float(resp.headers.get("Retry-After", 0)), 30.0)
+    except (AttributeError, TypeError, ValueError):
+        return 0.0

@@ -53,9 +53,21 @@ def run_once(cfg: config.Settings, session: requests.Session | None = None) -> R
         log.info("google sheet updated: %s", cfg.gsheet_id)
 
     if changes and cfg.tg_token and cfg.tg_chat_id:
-        for text in notify.format_changes(changes):
-            notify.send_telegram(session, cfg.tg_token, cfg.tg_chat_id, text)
-        log.info("telegram: sent %d changes", len(changes))
+        messages = notify.format_changes(changes)
+        failed = 0
+        for text in messages:
+            try:
+                notify.send_telegram(session, cfg.tg_token, cfg.tg_chat_id, text)
+            except Exception as e:  # изменения уже в базе и на листе «Изменения» — там их и увидят
+                failed += 1
+                # в тексте ошибки requests — адрес вместе с токеном бота
+                log.warning("telegram send failed: %s", str(e).replace(cfg.tg_token, "***"))
+        log.info(
+            "telegram: %d changes, %d of %d messages sent",
+            len(changes),
+            len(messages) - failed,
+            len(messages),
+        )
     return RunReport(len(res.products), len(changes), len(res.errors), res.complete)
 
 
@@ -64,6 +76,8 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--every", type=int, default=0, metavar="MIN", help="повторять каждые MIN минут")
     ap.add_argument("--pages", type=int, default=None, help="сколько страниц списка обойти (0 — все)")
     args = ap.parse_args(argv)
+    if args.every < 0 or (args.pages is not None and args.pages < 0):
+        ap.error("--every и --pages не могут быть отрицательными")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     cfg = config.load()
