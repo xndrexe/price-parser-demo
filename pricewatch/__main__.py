@@ -16,6 +16,26 @@ from .fetch import get_html, make_session
 log = logging.getLogger("pricewatch")
 
 
+class Redact(logging.Filter):
+    """Вычищает секрет из всех записей журнала, включая чужие (urllib3 пишет адрес с токеном
+    бота при повторе запроса) и текст трассировки."""
+
+    def __init__(self, secret: str):
+        super().__init__()
+        self.secret = secret
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if not self.secret:
+            return True
+        record.msg = record.getMessage().replace(self.secret, "***")
+        record.args = None
+        if record.exc_info and not record.exc_text:
+            record.exc_text = logging.Formatter().formatException(record.exc_info)
+        if record.exc_text:
+            record.exc_text = record.exc_text.replace(self.secret, "***")
+        return True
+
+
 @dataclass
 class RunReport:
     products: int
@@ -83,6 +103,8 @@ def main(argv: list[str] | None = None) -> None:
     cfg = config.load()
     if args.pages is not None:
         cfg = config.Settings(**{**cfg.__dict__, "max_pages": args.pages})
+    for handler in logging.getLogger().handlers:
+        handler.addFilter(Redact(cfg.tg_token))
     while True:
         try:
             r = run_once(cfg)
