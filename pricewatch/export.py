@@ -69,10 +69,25 @@ def change_rows(changes: list[sqlite3.Row]) -> list[list]:
     ]
 
 
+FORMULA_START = ("=", "+", "-", "@")
+
+
+def _gsheet_text(v):
+    """Текст с сайта, похожий на формулу, — в Google Таблицу как текст (апостроф Таблица не показывает).
+
+    Иначе при USER_ENTERED название вида «=IMPORTXML(...)» выполнится у всех, кто откроет таблицу.
+    """
+    return "'" + v if isinstance(v, str) and v.startswith(FORMULA_START) else v
+
+
 def _sheet(ws, headers: list[str], rows: list[list], widths: list[int]) -> None:
     ws.append(headers)
     for row in rows:
         ws.append(row)
+        # openpyxl считает формулой любую строку с «=» в начале; данные с сайта — всегда текст
+        for cell in ws[ws.max_row]:
+            if cell.data_type == "f":
+                cell.data_type = "s"
     head_fill = PatternFill("solid", fgColor="2F5597")
     for cell in ws[1]:
         cell.font = Font(bold=True, color="FFFFFF")
@@ -119,5 +134,6 @@ def to_gsheet(
         except gspread.WorksheetNotFound:
             ws = book.add_worksheet(title, rows=max(len(rows) + 1, 10), cols=len(headers))
         ws.clear()
-        ws.update([headers, *rows], value_input_option="USER_ENTERED")
+        safe = [[_gsheet_text(v) for v in row] for row in rows]
+        ws.update([headers, *safe], value_input_option="USER_ENTERED")
         ws.freeze(rows=1)
