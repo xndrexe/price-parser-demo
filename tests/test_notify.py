@@ -163,3 +163,50 @@ def test_send_does_not_retry_bad_token(monkeypatch):
     with pytest.raises(OSError):
         notify.send_telegram(s, "t", "1", "x")
     assert s.calls == 1
+
+
+def test_escaped_url_and_title_still_fit_limit():
+    # «&» при экранировании становится «&amp;»: проверяем длину уже готового текста
+    many = [
+        Change("t", str(i), "&" * 5000, "https://shop.test/?" + "&" * 950, "gone", None, None)
+        for i in range(3)
+    ]
+    msgs = notify.format_changes(many)
+    assert all(len(m) <= notify.LIMIT for m in msgs)
+    assert "href" not in msgs[0]  # раздутый экранированием адрес — без ссылки
+
+
+def test_short_url_with_ampersand_keeps_link():
+    c = Change("t", "a", "Книга", "https://shop.test/?a=1&b=2", "gone", None, None)
+    assert '<a href="https://shop.test/?a=1&amp;b=2">Книга</a>' in notify._line(c)
+
+
+@pytest.mark.parametrize(
+    "header, wait", [("-5", 0.0), ("nan", 0.0), ("100", 30.0), ("Wed, 21 Oct 2026", 0.0)]
+)
+def test_retry_after_is_sane(header, wait):
+    class R:
+        headers = {"Retry-After": header}
+
+    assert notify._retry_after(R) == wait
+
+
+def test_negative_retry_after_falls_back_to_pause(monkeypatch):
+    # раньше time.sleep(-5) падал с ValueError и сообщение терялось
+    waits = []
+    monkeypatch.setattr(notify.time, "sleep", waits.append)
+    codes = [429, 200]
+
+    class S:
+        def post(self, url, json, timeout):
+            class R:
+                status_code = codes.pop(0)
+                headers = {"Retry-After": "-5"}
+
+                def raise_for_status(self):
+                    pass
+
+            return R()
+
+    notify.send_telegram(S(), "t", "1", "x", pause=2.0)
+    assert waits == [2.0] and not codes

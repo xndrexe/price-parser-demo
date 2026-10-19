@@ -23,8 +23,10 @@ log = logging.getLogger("pricewatch")
 def _line(c: Change) -> str:
     title = c.title if len(c.title) <= TITLE_CHARS else c.title[: TITLE_CHARS - 1] + "…"
     name = html.escape(title)
-    if len(c.url) <= URL_CHARS:
-        name = f'<a href="{html.escape(c.url)}">{name}</a>'
+    href = html.escape(c.url)
+    # меряем уже экранированный адрес: «&» превращается в «&amp;» и раздувает сообщение
+    if len(href) <= URL_CHARS:
+        name = f'<a href="{href}">{name}</a>'
     match c.kind:
         case "price":
             arrow = "📉" if float(c.new) < float(c.old) else "📈"
@@ -94,6 +96,7 @@ def send_telegram(session: requests.Session, token: str, chat_id: str, text: str
 
 def _retry_after(resp: requests.Response) -> float:
     try:
-        return min(float(resp.headers.get("Retry-After", 0)), 30.0)
+        # max(0, …) отсекает отрицательное и nan: time.sleep на них падает
+        return max(0.0, min(float(resp.headers.get("Retry-After", 0)), 30.0))
     except ValueError:  # Retry-After бывает датой, а не числом секунд
         return 0.0
