@@ -76,7 +76,7 @@ def run_once(cfg: config.Settings, session: requests.Session | None = None) -> R
     if cfg.gsheet_id and cfg.google_credentials:
         try:
             export.to_gsheet(products, history, cfg.gsheet_id, cfg.google_credentials)
-            log.info("google sheet updated: %s", cfg.gsheet_id)
+            log.info("google sheet updated")
         except Exception as e:  # сеть, квота, ключ — как и с Excel, уведомление важнее таблицы
             log.warning("google sheet update failed, will retry next run: %s", e)
 

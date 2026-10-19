@@ -159,3 +159,19 @@ def test_crawl_skips_http_downgrade_link():
     res = crawl(fake, ROOT + "page-1.html")
     assert fake.hits == [ROOT + "page-1.html", ROOT + "a/index.html"]
     assert not res.complete
+
+
+def test_site_retry_after_capped():
+    # сайт просит подождать сутки — ждём не дольше потолка
+    from urllib3.response import HTTPResponse
+
+    from pricewatch.fetch import MAX_RETRY_AFTER, make_session
+
+    retry = make_session().get_adapter("https://shop.test/").max_retries
+    assert (
+        retry.get_retry_after(HTTPResponse(status=503, headers={"Retry-After": "86400"})) == MAX_RETRY_AFTER
+    )
+    assert retry.get_retry_after(HTTPResponse(status=503, headers={"Retry-After": "5"})) == 5
+    assert retry.get_retry_after(HTTPResponse(status=503)) is None
+    # повтор урезает счётчик через new() — потолок не должен теряться
+    assert type(retry.increment(method="GET", url="/", response=HTTPResponse(status=503))) is type(retry)

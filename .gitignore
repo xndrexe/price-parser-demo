@@ -10,3 +10,7 @@ data/
 out/
 *.json.key
 service-account*.json
+# ключ Google под любым другим именем
+credentials*.json
+*-key.json
+*_key.json

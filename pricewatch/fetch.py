@@ -11,6 +11,15 @@ from urllib3.util.retry import Retry
 
 USER_AGENT = "Mozilla/5.0 (compatible; pricewatch-demo/1.0)"
 MAX_REDIRECTS = 5
+MAX_RETRY_AFTER = 60.0  # сек; дольше сайт не ждём, даже если просит
+
+
+class _CappedRetry(Retry):
+    """Retry-After сайта с потолком: заголовок на сутки иначе подвесил бы запуск на сутки."""
+
+    def get_retry_after(self, response):
+        after = super().get_retry_after(response)
+        return None if after is None else min(after, MAX_RETRY_AFTER)
 
 
 class RedirectError(requests.RequestException):
@@ -30,7 +39,7 @@ def same_site(url: str, base: str) -> bool:
 def make_session(pool: int = 8) -> requests.Session:
     s = requests.Session()
     s.headers["User-Agent"] = USER_AGENT
-    retry = Retry(total=3, backoff_factor=1.0, status_forcelist=(429, 500, 502, 503, 504))
+    retry = _CappedRetry(total=3, backoff_factor=1.0, status_forcelist=(429, 500, 502, 503, 504))
     adapter = HTTPAdapter(max_retries=retry, pool_maxsize=pool)
     s.mount("http://", adapter)
     s.mount("https://", adapter)
