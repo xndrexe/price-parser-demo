@@ -89,3 +89,29 @@ def test_list_links_are_absolute_and_relative_to_page():
     links, nxt = parse_list(html, "https://shop.test/catalogue/category/page-1.html")
     assert links == ["https://shop.test/catalogue/book_1/index.html"]
     assert nxt is None
+
+
+@pytest.mark.parametrize(
+    "text, value",
+    [
+        ("£51.77 2 шт", 51.77),  # соседнее число не приклеивается к цене
+        ("12 345 ₽ 3 шт", 12345.0),
+        ("1 234 567,89 ₽", 1234567.89),
+        ("£0.99", 0.99),
+    ],
+)
+def test_price_ignores_neighbour_numbers(text, value):
+    assert _price(text) == pytest.approx(value)
+
+
+@pytest.mark.parametrize(
+    "text, stock", [("In stock (1,234 available)", 1234), ("In stock (1 234 available)", 1234)]
+)
+def test_stock_with_thousands(text, stock):
+    assert _stock(text) == stock
+
+
+def test_price_from_table_when_no_price_tag(book_html):
+    # нет цены в карточке — берём из таблицы характеристик
+    html = book_html.replace('class="price_color"', 'class="nope"')
+    assert parse_product(html, "u").price == pytest.approx(51.77)

@@ -38,8 +38,10 @@ def parse_list(html: str, page_url: str) -> tuple[list[str], str | None]:
 
 
 def _price(text: str) -> float:
-    # Цифры вместе с разделителями: «£1,234.56», «€1.234,56», «12 345 ₽»
-    m = re.search(r"\d(?:[\d.,\s]*\d)?", text)
+    # Цифры вместе с разделителями: «£1,234.56», «€1.234,56», «12 345 ₽».
+    # Пробел считается разделителем тысяч только в начале числа и перед ровно тремя цифрами:
+    # иначе в «£51.77 2 шт» соседнее число приклеится к цене
+    m = re.search(r"\d{1,3}(?:\s\d{3}(?!\d))+(?:[.,]\d+)*|\d+(?:[.,]\d+)*", text)
     if not m:
         raise ParseError(f"bad price {text!r}")
     num = re.sub(r"\s", "", m.group())
@@ -61,11 +63,11 @@ def _price(text: str) -> float:
 
 
 def _stock(text: str) -> int:
-    # «In stock (22 available)» → 22; «Out of stock» → 0
+    # «In stock (22 available)» → 22; «(1,234 available)» → 1234; «Out of stock» → 0
     if "out of stock" in text.lower():
         return 0
-    m = re.search(r"\((\d+)", text)
-    return int(m.group(1)) if m else 1
+    m = re.search(r"\((\d+(?:[,\s]\d{3})*)", text)
+    return int(re.sub(r"\D", "", m.group(1))) if m else 1
 
 
 def parse_product(html: str, url: str) -> Product:
