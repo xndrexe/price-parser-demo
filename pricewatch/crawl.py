@@ -44,7 +44,9 @@ def crawl(fetch: Fetch, start_url: str, max_pages: int = 0, workers: int = 8) ->
             break
         visited.add(url)
         try:
-            page_links, url = parse_list(fetch(url), url)
+            html = fetch(url)
+            # ссылки — от адреса после редиректов; same_site ниже по-прежнему от start_url
+            page_links, url = parse_list(html, getattr(html, "url", url))
         except Exception as e:  # сеть, 404 или сменилась вёрстка — дальше идти некуда
             log.warning("list page failed %s: %s", url, e)
             res.errors.append(f"{url}: {e}")

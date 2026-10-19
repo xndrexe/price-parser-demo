@@ -289,3 +289,59 @@ def test_crawl_skips_backslash_link_as_foreign():
     res = crawl(fake, ROOT + "page-1.html")
     assert fake.hits == [ROOT + "page-1.html", ROOT + "a/index.html"]
     assert res.errors == [f"{bad}: foreign link skipped"]
+
+
+class _Moved:
+    """Сайт с редиректами: запрошенный адрес → (адрес после редиректов, HTML)."""
+
+    def __init__(self, pages):
+        self.pages, self.hits = pages, []
+
+    def __call__(self, url):
+        self.hits.append(url)
+        final, html = self.pages[url]
+        return fetch.Html(html, final)
+
+
+def _same(url, html):
+    return url, (url, html)
+
+
+def test_crawl_resolves_links_from_address_after_redirect():
+    # /catalog → 301 на /catalog/: ссылка item-1/index.html — внутри /catalog/, а не в корне
+    site = _Moved(
+        {
+            "https://shop.test/catalog": (
+                "https://shop.test/catalog/",
+                make_list(["item-1/index.html"], None),
+            ),
+            **dict([_same("https://shop.test/catalog/item-1/index.html", make_book("u1", "А", 10, 1))]),
+        }
+    )
+    res = crawl(site, "https://shop.test/catalog")
+    assert [p.upc for p in res.products] == ["u1"] and res.errors == []
+
+
+def test_crawl_after_www_redirect_takes_links_without_extra_hop():
+    www = "https://www.shop.test/c/"
+    site = _Moved(
+        {
+            "https://shop.test/c/": (www, make_list(["a.html"], "page-2.html")),
+            **dict(
+                [
+                    _same(www + "page-2.html", make_list(["b.html"], None)),
+                    _same(www + "a.html", make_book("u1", "А", 10, 1)),
+                    _same(www + "b.html", make_book("u2", "Б", 20, 1)),
+                ]
+            ),
+        }
+    )
+    res = crawl(site, "https://shop.test/c/")
+    assert res.complete and len(res.products) == 2
+    assert all(h.startswith(www) for h in site.hits[1:])
+
+
+def test_get_html_reports_address_after_redirect():
+    s = _Redirects({ROOT + "a": (301, "a/"), ROOT + "a/": (200, "ok")})
+    page = fetch.get_html(s, ROOT + "a")
+    assert page == "ok" and page.url == ROOT + "a/"

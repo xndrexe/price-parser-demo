@@ -24,6 +24,18 @@ class _CappedRetry(Retry):
         return None if after is None else min(after, MAX_RETRY_AFTER)
 
 
+class Html(str):
+    """Текст страницы и адрес, где она оказалась после редиректов: относительные
+    ссылки разбираются от него, а не от запрошенного (/catalog → /catalog/)."""
+
+    url: str
+
+    def __new__(cls, text: str, url: str) -> Html:
+        page = super().__new__(cls, text)
+        page.url = url
+        return page
+
+
 class RedirectError(requests.RequestException):
     """Сайт перенаправил на чужой хост, на http вместо https или по кругу."""
 
@@ -65,7 +77,7 @@ def make_session(pool: int = 8) -> requests.Session:
     return s
 
 
-def get_html(session: requests.Session, url: str, delay: float = 0.0) -> str:
+def get_html(session: requests.Session, url: str, delay: float = 0.0) -> Html:
     # редиректы проходим сами: requests по умолчанию пошёл бы по Location куда угодно,
     # хоть на 169.254.169.254, и проверка ссылок в обходе ничего бы не дала
     for _ in range(MAX_REDIRECTS + 1):
@@ -84,4 +96,4 @@ def get_html(session: requests.Session, url: str, delay: float = 0.0) -> str:
         resp.encoding = "utf-8"
     if delay:
         time.sleep(delay)
-    return resp.text
+    return Html(resp.text, url)
