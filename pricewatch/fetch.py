@@ -26,14 +26,25 @@ class RedirectError(requests.RequestException):
     """Сайт перенаправил на чужой хост, на http вместо https или по кругу."""
 
 
+def _site(parts) -> tuple[str, int | None]:
+    """Хост без одной ведущей «www.» и порт: shop.ru и www.shop.ru — один сайт."""
+    host = parts.hostname or ""
+    return host.removeprefix("www."), parts.port
+
+
 def same_site(url: str, base: str) -> bool:
     """Только http(s) на тот же хост, что и base, и без отката с https на http:
     ссылка или редирект с сайта не уведёт во внутреннюю сеть, на чужой сайт
-    или на открытый канал, где ответ можно подменить."""
+    или на открытый канал, где ответ можно подменить. Хост с «www.» и без неё
+    считаем одним сайтом — многие магазины так перенаправляют; поддомен,
+    другой порт и похожее имя — чужой сайт."""
     u, b = urlsplit(url), urlsplit(base)
-    if u.scheme not in ("http", "https") or u.netloc.lower() != b.netloc.lower():
+    if u.scheme not in ("http", "https") or b.scheme == "https" and u.scheme == "http":
         return False
-    return not (b.scheme == "https" and u.scheme == "http")
+    try:
+        return bool(u.hostname) and _site(u) == _site(b)
+    except ValueError:  # порт не число или вне 0–65535
+        return False
 
 
 def make_session(pool: int = 8) -> requests.Session:

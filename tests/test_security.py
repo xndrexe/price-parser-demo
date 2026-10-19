@@ -150,6 +150,96 @@ def test_fetch_follows_same_site_redirect_and_stops_loops():
     assert len(loop.hits) == fetch.MAX_REDIRECTS + 1
 
 
+@pytest.mark.parametrize(
+    "url, base",
+    [
+        ("https://www.example.ru/a", "https://example.ru/"),  # без www → www
+        ("https://example.ru/a", "https://www.example.ru/"),  # www → без www
+        ("https://WWW.Example.RU/a", "https://example.ru/"),
+        ("https://www.example.ru/a", "http://example.ru/"),  # http → https можно
+        ("https://www.example.ru:8443/a", "https://example.ru:8443/"),
+    ],
+)
+def test_same_site_treats_www_as_same_host(url, base):
+    assert fetch.same_site(url, base)
+
+
+@pytest.mark.parametrize(
+    "url, base",
+    [
+        ("https://evil.com/", "https://example.ru/"),
+        ("https://shop.example.ru/", "https://example.ru/"),  # поддомен — чужой
+        ("https://www.shop.example.ru/", "https://example.ru/"),  # поддомен с www — тоже чужой
+        ("https://example.ru.evil.com/", "https://example.ru/"),
+        ("https://www.example.ru.evil.com/", "https://www.example.ru/"),
+        ("https://evil-example.ru/", "https://example.ru/"),
+        ("https://wwwexample.ru/", "https://example.ru/"),
+        ("https://www.www.example.ru/", "https://example.ru/"),  # снимаем одну «www.»
+        ("https://example.ru:8443/", "https://example.ru/"),
+        ("https://www.example.ru:8443/", "https://example.ru/"),
+        ("https://www.example.ru/", "https://example.ru:8443/"),
+        ("http://www.example.ru/", "https://example.ru/"),  # откат на http
+        ("http://example.ru/", "https://www.example.ru/"),
+        ("https://example.ru:abc/", "https://example.ru/"),  # порт не число
+        ("ftp://www.example.ru/", "https://example.ru/"),
+        ("https:///a", "https:///b"),  # пустой хост
+    ],
+)
+def test_same_site_refuses_other_sites(url, base):
+    assert not fetch.same_site(url, base)
+
+
+def test_fetch_follows_redirect_to_www_and_back():
+    bare, www = "https://example.ru/", "https://www.example.ru/"
+    s = _Redirects({bare: (301, www), www: (200, "ok")})
+    assert fetch.get_html(s, bare) == "ok"
+    back = _Redirects({www: (301, bare), bare: (200, "ok")})
+    assert fetch.get_html(back, www) == "ok"
+
+
+@pytest.mark.parametrize(
+    "location",
+    [
+        "https://shop.example.ru/",
+        "https://example.ru.evil.com/",
+        "https://evil-example.ru/",
+        "https://www.example.ru:8443/",
+        "http://www.example.ru/",
+    ],
+)
+def test_fetch_refuses_redirect_off_site_even_with_www(location):
+    s = _Redirects({"https://example.ru/": (302, location)})
+    with pytest.raises(fetch.RedirectError):
+        fetch.get_html(s, "https://example.ru/")
+    assert s.hits == ["https://example.ru/"]
+
+
+def test_fetch_www_ping_pong_stops_after_limit():
+    bare, www = "https://example.ru/", "https://www.example.ru/"
+    s = _Redirects({bare: (302, www), www: (302, bare)})
+    with pytest.raises(fetch.RedirectError):
+        fetch.get_html(s, bare)
+    assert len(s.hits) == fetch.MAX_REDIRECTS + 1
+
+
+def test_crawl_takes_www_links_and_skips_subdomain():
+    pages = {
+        ROOT + "page-1.html": make_list(
+            ["https://www.shop.test/catalogue/a/index.html", "https://m.shop.test/catalogue/b/index.html"],
+            "https://www.shop.test/catalogue/page-2.html",
+        ),
+        "https://www.shop.test/catalogue/page-2.html": make_list(["c/index.html"], None),
+        "https://www.shop.test/catalogue/a/index.html": make_book("upc-a", "А", 10, 5),
+        "https://www.shop.test/catalogue/c/index.html": make_book("upc-c", "В", 20, 1),
+    }
+    fake = FakeSite(pages)
+    res = crawl(fake, ROOT + "page-1.html")
+    assert "https://m.shop.test/catalogue/b/index.html" not in fake.hits
+    assert "https://www.shop.test/catalogue/c/index.html" in fake.hits
+    assert res.pages == 2 and len(res.products) == 2
+    assert res.errors == ["https://m.shop.test/catalogue/b/index.html: foreign link skipped"]
+
+
 def test_crawl_skips_http_downgrade_link():
     pages = {
         ROOT + "page-1.html": make_list(["a/index.html", "http://shop.test/catalogue/b/index.html"], None),
