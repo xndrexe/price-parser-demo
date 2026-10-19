@@ -219,3 +219,21 @@ def test_google_sheet_is_updated_when_configured(cfg, monkeypatch):
     monkeypatch.setattr(app.export, "to_gsheet", lambda p, h, sid, cred: calls.append((len(p), sid, cred)))
     app.run_once(replace(cfg, gsheet_id="SHEET", google_credentials="/k.json"), FakeHTTP(shop()))
     assert calls == [(2, "SHEET", "/k.json")]
+
+
+def test_google_sheet_failure_keeps_telegram(cfg, monkeypatch, caplog):
+    """Google Таблица недоступна — уведомление об изменениях всё равно уходит."""
+    http = FakeHTTP(shop())
+    gs = replace(cfg, gsheet_id="SHEET", google_credentials="/k.json")
+    monkeypatch.setattr(app.export, "to_gsheet", lambda *a: None)
+    app.run_once(gs, http)
+
+    def quota(*a):
+        raise RuntimeError("APIError: [429] Quota exceeded")
+
+    monkeypatch.setattr(app.export, "to_gsheet", quota)
+    http.pages = shop(price_a=8.0)
+    with caplog.at_level("WARNING"):
+        assert app.run_once(gs, http).changes == 1
+    assert "google sheet update failed" in caplog.text
+    assert len(http.sent) == 1 and "£10.00 → £8.00" in http.sent[0]

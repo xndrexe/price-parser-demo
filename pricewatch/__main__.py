@@ -74,8 +74,11 @@ def run_once(cfg: config.Settings, session: requests.Session | None = None) -> R
         # упасть здесь — значит потерять уведомление о них насовсем
         log.warning("excel save failed, will retry next run: %s", e)
     if cfg.gsheet_id and cfg.google_credentials:
-        export.to_gsheet(products, history, cfg.gsheet_id, cfg.google_credentials)
-        log.info("google sheet updated: %s", cfg.gsheet_id)
+        try:
+            export.to_gsheet(products, history, cfg.gsheet_id, cfg.google_credentials)
+            log.info("google sheet updated: %s", cfg.gsheet_id)
+        except Exception as e:  # сеть, квота, ключ — как и с Excel, уведомление важнее таблицы
+            log.warning("google sheet update failed, will retry next run: %s", e)
 
     if changes and cfg.tg_token and cfg.tg_chat_id:
         messages = notify.format_changes(changes)
