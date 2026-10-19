@@ -9,6 +9,7 @@ class FakeResp:
     def __init__(self, encoding, status=200):
         self.encoding, self.status = encoding, status
         self._raw = "£51.77".encode()
+        self.is_redirect = False
 
     def raise_for_status(self):
         if self.status >= 400:
@@ -23,7 +24,7 @@ class FakeSession:
     def __init__(self, resp):
         self.resp, self.calls = resp, []
 
-    def get(self, url, timeout):
+    def get(self, url, timeout, allow_redirects=True):
         self.calls.append((url, timeout))
         return self.resp
 

@@ -19,12 +19,13 @@ class FakeHTTP:
         self.pages = pages
         self.sent = []
 
-    def get(self, url, timeout):
+    def get(self, url, timeout, allow_redirects=True):
         page = self.pages.get(url)
 
         class R:
             status_code = 200 if page is not None else 404
             encoding = "utf-8"
+            is_redirect = False
             text = page or ""
 
             def raise_for_status(self):

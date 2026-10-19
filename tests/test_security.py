@@ -1,16 +1,17 @@
-"""Проверки безопасности: формулы из данных сайта, чужие ссылки в обходе, токен в журнале."""
+"""Проверки безопасности: формулы из данных сайта, чужие ссылки и редиректы, токен в журнале."""
 
 import io
 import logging
 import sys
 import types
 
+import pytest
 from conftest import FakeSite, make_book, make_list
 from openpyxl import load_workbook
 from test_gsheet import FakeBook, NotFound
 
 from pricewatch import __main__ as app
-from pricewatch import export, store
+from pricewatch import export, fetch, store
 from pricewatch.crawl import crawl
 from pricewatch.parse import Product
 
@@ -100,3 +101,61 @@ def test_main_installs_redact_filter(monkeypatch, tmp_path):
     monkeypatch.setattr(app, "run_once", lambda c: app.RunReport(0, 0, 0, True))
     app.main([])
     assert any(isinstance(f, app.Redact) and f.secret == "123:SECRET" for f in handler.filters)
+
+
+class _Redirects:
+    """Сессия-заглушка: адрес → (код, Location или текст страницы)."""
+
+    def __init__(self, routes):
+        self.routes, self.hits = routes, []
+
+    def get(self, url, timeout, allow_redirects=True):
+        assert allow_redirects is False  # иначе requests сам уйдёт по Location
+        self.hits.append(url)
+        code, body = self.routes[url]
+
+        class R:
+            status_code = code
+            is_redirect = code in (301, 302, 303, 307, 308)
+            headers = {"location": body}
+            encoding = "utf-8"
+            text = body
+
+            def raise_for_status(self):
+                pass
+
+        return R()
+
+
+def test_fetch_refuses_redirect_to_internal_host():
+    s = _Redirects({ROOT + "a": (302, "http://169.254.169.254/latest/meta-data/")})
+    with pytest.raises(fetch.RedirectError):
+        fetch.get_html(s, ROOT + "a")
+    assert s.hits == [ROOT + "a"]
+
+
+def test_fetch_refuses_https_to_http_redirect():
+    s = _Redirects({ROOT + "a": (301, "http://shop.test/catalogue/a")})
+    with pytest.raises(fetch.RedirectError):
+        fetch.get_html(s, ROOT + "a")
+    assert s.hits == [ROOT + "a"]
+
+
+def test_fetch_follows_same_site_redirect_and_stops_loops():
+    s = _Redirects({ROOT + "a": (302, "b"), ROOT + "b": (200, "ok")})
+    assert fetch.get_html(s, ROOT + "a") == "ok"
+    loop = _Redirects({ROOT + "a": (302, "a")})
+    with pytest.raises(fetch.RedirectError):
+        fetch.get_html(loop, ROOT + "a")
+    assert len(loop.hits) == fetch.MAX_REDIRECTS + 1
+
+
+def test_crawl_skips_http_downgrade_link():
+    pages = {
+        ROOT + "page-1.html": make_list(["a/index.html", "http://shop.test/catalogue/b/index.html"], None),
+        ROOT + "a/index.html": make_book("upc-a", "А", 10, 5),
+    }
+    fake = FakeSite(pages)
+    res = crawl(fake, ROOT + "page-1.html")
+    assert fake.hits == [ROOT + "page-1.html", ROOT + "a/index.html"]
+    assert not res.complete

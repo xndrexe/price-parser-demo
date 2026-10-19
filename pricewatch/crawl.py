@@ -6,8 +6,8 @@ import logging
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from urllib.parse import urlsplit
 
+from .fetch import same_site
 from .parse import Product, parse_list, parse_product
 
 log = logging.getLogger(__name__)
@@ -21,13 +21,6 @@ class CrawlResult:
     errors: list[str] = field(default_factory=list)
     pages: int = 0
     complete: bool = False  # дошли до последней страницы без сбоев
-
-
-def _same_site(url: str, start_url: str) -> bool:
-    """Ходим только по http(s) на хост стартовой страницы: ссылка из вёрстки не уведёт
-    обходчик во внутреннюю сеть или на чужой сайт, а в Telegram не попадёт «javascript:»."""
-    u, s = urlsplit(url), urlsplit(start_url)
-    return u.scheme in ("http", "https") and u.netloc.lower() == s.netloc.lower()
 
 
 def _product(fetch: Fetch, url: str) -> Product | str:
@@ -57,13 +50,13 @@ def crawl(fetch: Fetch, start_url: str, max_pages: int = 0, workers: int = 8) ->
             res.errors.append(f"{url}: {e}")
             break
         for link in page_links:
-            if _same_site(link, start_url):
+            if same_site(link, start_url):
                 links.append(link)
             else:  # обход неполный: иначе товар за чужой ссылкой станет «пропал с сайта»
                 log.warning("foreign product link skipped: %s", link)
                 res.errors.append(f"{link}: foreign link skipped")
         res.pages += 1
-        if url and not _same_site(url, start_url):
+        if url and not same_site(url, start_url):
             log.warning("foreign next link, stop: %s", url)
             res.errors.append(f"{url}: foreign next link")
             break
