@@ -36,3 +36,12 @@ def test_values_from_env(monkeypatch, tmp_path):
     assert (s.max_pages, s.workers, s.delay) == (3, 1, 1.5)
     assert s.db_path == tmp_path / "x.db"
     assert s.excel_path == config.ROOT / Path("rel/out.xlsx")
+
+
+def test_negative_values_are_clamped(monkeypatch):
+    # отрицательная пауза роняла бы каждую загрузку, отрицательный лимит — обходил ноль страниц
+    _clean(monkeypatch)
+    monkeypatch.setenv("MAX_PAGES", "-1")
+    monkeypatch.setenv("DELAY", "-0.5")
+    s = config.load()
+    assert (s.max_pages, s.delay) == (0, 0.0)

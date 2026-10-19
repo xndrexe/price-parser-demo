@@ -38,9 +38,11 @@ def load() -> Settings:
     env = os.environ.get
     return Settings(
         start_url=env("START_URL", "https://books.toscrape.com/catalogue/page-1.html"),
-        max_pages=int(env("MAX_PAGES", "0")),
+        # отрицательные значения не имеют смысла: MAX_PAGES<0 обошёл бы ноль страниц,
+        # DELAY<0 ронял бы каждую загрузку на time.sleep
+        max_pages=max(0, int(env("MAX_PAGES", "0"))),
         workers=max(1, int(env("WORKERS", "8"))),
-        delay=float(env("DELAY", "0.2")),
+        delay=max(0.0, float(env("DELAY", "0.2"))),
         db_path=_path(env("DB_PATH", "data/pricewatch.db")),
         excel_path=_path(env("EXCEL_PATH", "out/products.xlsx")),
         tg_token=env("TG_TOKEN", ""),
