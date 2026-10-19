@@ -183,6 +183,11 @@ def test_same_site_treats_www_as_same_host(url, base):
         ("https://example.ru:abc/", "https://example.ru/"),  # порт не число
         ("ftp://www.example.ru/", "https://example.ru/"),
         ("https:///a", "https:///b"),  # пустой хост
+        # urlsplit видит хост example.ru, а requests уйдёт на адрес до «\»
+        ("https://127.0.0.1:8080\\@example.ru/", "https://example.ru/"),
+        ("https://169.254.169.254\\@example.ru/latest/meta-data/", "https://example.ru/"),
+        ("https://user@example.ru/", "https://example.ru/"),  # адрес с логином
+        ("https://user:pass@www.example.ru/", "https://example.ru/"),
     ],
 )
 def test_same_site_refuses_other_sites(url, base):
@@ -265,3 +270,22 @@ def test_site_retry_after_capped():
     assert retry.get_retry_after(HTTPResponse(status=503)) is None
     # повтор урезает счётчик через new() — потолок не должен теряться
     assert type(retry.increment(method="GET", url="/", response=HTTPResponse(status=503))) is type(retry)
+
+
+def test_fetch_refuses_backslash_redirect_to_internal_host():
+    s = _Redirects({"https://example.ru/": (302, "https://169.254.169.254\\@example.ru/")})
+    with pytest.raises(fetch.RedirectError):
+        fetch.get_html(s, "https://example.ru/")
+    assert s.hits == ["https://example.ru/"]
+
+
+def test_crawl_skips_backslash_link_as_foreign():
+    bad = "https://127.0.0.1:8080\\@shop.test/catalogue/b/index.html"
+    pages = {
+        ROOT + "page-1.html": make_list(["a/index.html", bad], None),
+        ROOT + "a/index.html": make_book("upc-a", "А", 10, 5),
+    }
+    fake = FakeSite(pages)
+    res = crawl(fake, ROOT + "page-1.html")
+    assert fake.hits == [ROOT + "page-1.html", ROOT + "a/index.html"]
+    assert res.errors == [f"{bad}: foreign link skipped"]

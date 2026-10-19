@@ -7,6 +7,8 @@ from urllib.parse import urljoin, urlsplit
 
 import requests
 from requests.adapters import HTTPAdapter
+from urllib3.exceptions import LocationParseError
+from urllib3.util import parse_url
 from urllib3.util.retry import Retry
 
 USER_AGENT = "Mozilla/5.0 (compatible; pricewatch-demo/1.0)"
@@ -26,10 +28,17 @@ class RedirectError(requests.RequestException):
     """Сайт перенаправил на чужой хост, на http вместо https или по кругу."""
 
 
-def _site(parts) -> tuple[str, int | None]:
-    """Хост без одной ведущей «www.» и порт: shop.ru и www.shop.ru — один сайт."""
-    host = parts.hostname or ""
-    return host.removeprefix("www."), parts.port
+def _site(url: str) -> tuple[str, str, int | None] | None:
+    """Схема, хост без одной ведущей «www.» и порт — тем же разбором urllib3, которым
+    адрес откроет requests. Адрес с логином или без хоста — None."""
+    try:
+        p = parse_url(url)
+    except LocationParseError:  # порт не число или вне 0–65535
+        return None
+    # «\@» urlsplit читает как логин, а urllib3 режет хост на «\» — такой адрес не берём вовсе
+    if not p.host or p.auth or "@" in urlsplit(url).netloc:
+        return None
+    return p.scheme, p.host.removeprefix("www."), p.port
 
 
 def same_site(url: str, base: str) -> bool:
@@ -37,14 +46,13 @@ def same_site(url: str, base: str) -> bool:
     ссылка или редирект с сайта не уведёт во внутреннюю сеть, на чужой сайт
     или на открытый канал, где ответ можно подменить. Хост с «www.» и без неё
     считаем одним сайтом — многие магазины так перенаправляют; поддомен,
-    другой порт и похожее имя — чужой сайт."""
-    u, b = urlsplit(url), urlsplit(base)
-    if u.scheme not in ("http", "https") or b.scheme == "https" and u.scheme == "http":
+    другой порт, похожее имя и адрес с логином — чужой сайт."""
+    u, b = _site(url), _site(base)
+    if u is None or b is None or u[0] not in ("http", "https"):
         return False
-    try:
-        return bool(u.hostname) and _site(u) == _site(b)
-    except ValueError:  # порт не число или вне 0–65535
+    if b[0] == "https" and u[0] == "http":
         return False
+    return u[1:] == b[1:]
 
 
 def make_session(pool: int = 8) -> requests.Session:
