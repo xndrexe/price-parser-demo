@@ -80,14 +80,14 @@ def save_snapshot(
             prev = old.get(p.upc)
             if prev is None:
                 if not first_run:
-                    add(p.upc, p.title, p.url, "new", None, _fmt_price(p.price))
+                    add(p.upc, p.title, p.url, "new", n=_fmt_price(p.price))
                 conn.execute(
                     "INSERT INTO products VALUES (?,?,?,?,?,?,?,?,?,0)",
                     (p.upc, p.title, p.price, p.stock, p.rating, p.category, p.url, ts, ts),
                 )
                 continue
             if prev["gone"]:
-                add(p.upc, p.title, p.url, "back", None, _fmt_price(p.price))
+                add(p.upc, p.title, p.url, "back", n=_fmt_price(p.price))
             if round(prev["price"], 2) != round(p.price, 2):
                 add(p.upc, p.title, p.url, "price", _fmt_price(prev["price"]), _fmt_price(p.price))
             if prev["stock"] != p.stock:

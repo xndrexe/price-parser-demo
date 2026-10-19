@@ -37,6 +37,8 @@ class FakeHTTP:
         self.sent.append(json["text"])
 
         class R:
+            status_code = 200
+
             def raise_for_status(self):
                 pass
 

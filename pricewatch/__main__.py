@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import requests
 
@@ -102,7 +102,7 @@ def main(argv: list[str] | None = None) -> None:
 
     cfg = config.load()
     if args.pages is not None:
-        cfg = config.Settings(**{**cfg.__dict__, "max_pages": args.pages})
+        cfg = replace(cfg, max_pages=args.pages)
     for handler in logging.getLogger().handlers:
         handler.addFilter(Redact(cfg.tg_token))
     while True:

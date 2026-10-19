@@ -82,7 +82,7 @@ def send_telegram(session: requests.Session, token: str, chat_id: str, text: str
                 raise
             time.sleep(pause * attempt)
             continue
-        status = getattr(resp, "status_code", 200)
+        status = resp.status_code
         if (status == 429 or status >= 500) and attempt < RETRIES:
             wait = _retry_after(resp) or pause * attempt
             log.warning("telegram %s, retry in %.0fs", status, wait)
@@ -95,5 +95,5 @@ def send_telegram(session: requests.Session, token: str, chat_id: str, text: str
 def _retry_after(resp: requests.Response) -> float:
     try:
         return min(float(resp.headers.get("Retry-After", 0)), 30.0)
-    except (AttributeError, TypeError, ValueError):
+    except ValueError:  # Retry-After бывает датой, а не числом секунд
         return 0.0

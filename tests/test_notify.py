@@ -58,6 +58,8 @@ class FakeSession:
         self.calls.append((url, json))
 
         class R:
+            status_code = 200
+
             def raise_for_status(self):
                 pass
 
@@ -97,6 +99,8 @@ def test_send_telegram_raises_on_http_error():
     class Bad(FakeSession):
         def post(self, url, json, timeout):
             class R:
+                status_code = 401
+
                 def raise_for_status(self):
                     raise OSError("401")
 
