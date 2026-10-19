@@ -199,3 +199,23 @@ def test_negative_flags_rejected(argv, monkeypatch):
     with pytest.raises(SystemExit) as e:
         app.main(argv)
     assert e.value.code == 2
+
+
+def test_control_char_in_title_keeps_excel_and_telegram(cfg):
+    # раньше IllegalCharacterError ронял запуск после записи в базу — уведомление терялось
+    pages = shop()
+    pages[ROOT + "b/index.html"] = make_book("upc-b", "Книга\x0bБ", 20.0, 4)
+    app.run_once(cfg, FakeHTTP(pages))
+    pages[ROOT + "b/index.html"] = make_book("upc-b", "Книга\x0bБ", 15.0, 4)
+    http = FakeHTTP(pages)
+    report = app.run_once(cfg, http)
+    assert report.changes == 1 and len(http.sent) == 1
+    titles = [r[0].value for r in load_workbook(cfg.excel_path)["Товары"].iter_rows(min_row=2)]
+    assert "КнигаБ" in titles
+
+
+def test_google_sheet_is_updated_when_configured(cfg, monkeypatch):
+    calls = []
+    monkeypatch.setattr(app.export, "to_gsheet", lambda p, h, sid, cred: calls.append((len(p), sid, cred)))
+    app.run_once(replace(cfg, gsheet_id="SHEET", google_credentials="/k.json"), FakeHTTP(shop()))
+    assert calls == [(2, "SHEET", "/k.json")]

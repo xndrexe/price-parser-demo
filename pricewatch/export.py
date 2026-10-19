@@ -6,6 +6,7 @@ import sqlite3
 from pathlib import Path
 
 from openpyxl import Workbook
+from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
@@ -77,13 +78,18 @@ def _gsheet_text(v):
 
     Иначе при USER_ENTERED название вида «=IMPORTXML(...)» выполнится у всех, кто откроет таблицу.
     """
-    return "'" + v if isinstance(v, str) and v.startswith(FORMULA_START) else v
+    if isinstance(v, str) and (v.startswith(FORMULA_START) or v.isdigit()):
+        # строка из одних цифр (артикул «036000291452») иначе станет числом без ведущего нуля
+        return "'" + v
+    return v
 
 
 def _sheet(ws, headers: list[str], rows: list[list], widths: list[int]) -> None:
     ws.append(headers)
     for row in rows:
-        ws.append(row)
+        # управляющие символы из вёрстки (\x0b и т. п.) Excel не принимает: без чистки падает
+        # вся выгрузка, а изменения уже в базе — уведомление о них потерялось бы
+        ws.append([ILLEGAL_CHARACTERS_RE.sub("", v) if isinstance(v, str) else v for v in row])
         # openpyxl считает формулой любую строку с «=» в начале; данные с сайта — всегда текст
         for cell in ws[ws.max_row]:
             if cell.data_type == "f":

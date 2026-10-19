@@ -63,3 +63,31 @@ def test_to_excel_overwrites_previous_file(tmp_path):
     store.save_snapshot(conn, [Product("a", "Новая", 1, 1, 1, "К", "u")], True)
     export.to_excel(store.current(conn), [], path)
     assert load_workbook(path)["Товары"]["A2"].value == "Новая"
+
+
+def test_control_chars_do_not_break_excel(tmp_path):
+    # управляющий символ в названии раньше ронял всю выгрузку
+    conn = store.connect(tmp_path / "db.sqlite")
+    for price in (10.0, 9.0):
+        p = Product("a", "Книга\x0bодин", price, 3, 4, "По\x00эзия", "https://s.test/a")
+        store.save_snapshot(conn, [p], True)
+    path = export.to_excel(store.current(conn), store.recent_changes(conn), tmp_path / "x.xlsx")
+    wb = load_workbook(path)
+    assert wb["Товары"]["A2"].value == "Книгаодин" and wb["Товары"]["B2"].value == "Поэзия"
+    assert wb["Изменения"]["C2"].value == "Книгаодин"
+
+
+@pytest.mark.parametrize(
+    "raw, value",
+    [
+        ("036000291452", "'036000291452"),  # артикул из цифр не теряет ведущий ноль
+        ("=IMPORTXML(1)", "'=IMPORTXML(1)"),
+        ("+7", "'+7"),
+        ("Книга", "Книга"),
+        ("", ""),
+        (12.5, 12.5),
+        (7, 7),
+    ],
+)
+def test_gsheet_text(raw, value):
+    assert export._gsheet_text(raw) == value
