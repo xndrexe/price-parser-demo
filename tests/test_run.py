@@ -175,6 +175,24 @@ def test_telegram_failure_keeps_run_and_changes(cfg, monkeypatch, caplog):
     assert [r[1] for r in changes[1:]] == ["Цена"]
 
 
+def test_locked_excel_keeps_telegram(cfg, monkeypatch, caplog):
+    """Excel открыт на Windows и не даёт себя заменить — уведомление всё равно уходит."""
+    http = FakeHTTP(shop())
+    app.run_once(cfg, http)
+    before = cfg.excel_path.read_bytes()
+
+    def locked(self, target):
+        raise PermissionError(13, "file is used by another process", str(target))
+
+    monkeypatch.setattr(app.export.Path, "replace", locked)
+    http.pages = shop(price_a=8.0)
+    with caplog.at_level("WARNING"):
+        assert app.run_once(cfg, http).changes == 1
+    assert "excel save failed" in caplog.text
+    assert len(http.sent) == 1 and "£10.00 → £8.00" in http.sent[0]
+    assert cfg.excel_path.read_bytes() == before
+
+
 @pytest.mark.parametrize("argv", [["--every", "-5"], ["--pages", "-1"]])
 def test_negative_flags_rejected(argv, monkeypatch):
     monkeypatch.setattr(app, "run_once", lambda c: pytest.fail("не должен запускаться"))

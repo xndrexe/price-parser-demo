@@ -66,8 +66,13 @@ def run_once(cfg: config.Settings, session: requests.Session | None = None) -> R
     finally:
         conn.close()
 
-    export.to_excel(products, history, cfg.excel_path)
-    log.info("excel saved: %s", cfg.excel_path)
+    try:
+        export.to_excel(products, history, cfg.excel_path)
+        log.info("excel saved: %s", cfg.excel_path)
+    except OSError as e:
+        # На Windows открытый в Excel файл не даёт себя заменить. Изменения уже в базе:
+        # упасть здесь — значит потерять уведомление о них насовсем
+        log.warning("excel save failed, will retry next run: %s", e)
     if cfg.gsheet_id and cfg.google_credentials:
         export.to_gsheet(products, history, cfg.gsheet_id, cfg.google_credentials)
         log.info("google sheet updated: %s", cfg.gsheet_id)
