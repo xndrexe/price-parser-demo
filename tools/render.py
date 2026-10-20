@@ -16,7 +16,7 @@ from openpyxl import load_workbook
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from pricewatch import config, notify, store  # noqa: E402
+from pricewatch import config, export, notify, store  # noqa: E402
 
 OUT = ROOT / "build" / "screens"
 
@@ -98,10 +98,10 @@ def main() -> None:
     time = changes[0].ts[11:16]
     (OUT / "1-uvedomlenie.html").write_text(render_chat(notify.format_changes(changes), time), "utf-8")
     (OUT / "2-tablitsa.html").write_text(
-        render_sheet(cfg.excel_path, "Товары", 14, skip_cols=(6,), only="Travel"), "utf-8"
+        render_sheet(cfg.excel_path, export.PRODUCTS_SHEET, 14, skip_cols=(6,), only="Travel"), "utf-8"
     )
     (OUT / "3-izmeneniya.html").write_text(
-        render_sheet(cfg.excel_path, "Изменения", 10, skip_cols=(5,)), "utf-8"
+        render_sheet(cfg.excel_path, export.CHANGES_SHEET, 10, skip_cols=(5,)), "utf-8"
     )
     for f in sorted(OUT.glob("*.html")):
         print(f)

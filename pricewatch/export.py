@@ -20,6 +20,8 @@ PRODUCT_HEADERS = [
     "Ссылка",
     "Обновлено",
 ]
+PRODUCTS_SHEET = "Товары"
+CHANGES_SHEET = "Изменения"
 CHANGE_HEADERS = ["Когда", "Что", "Товар", "Было", "Стало", "Ссылка"]
 KIND_RU = {
     "price": "Цена",
@@ -109,11 +111,11 @@ def to_excel(products: list[sqlite3.Row], changes: list[sqlite3.Row], path: Path
     path.parent.mkdir(parents=True, exist_ok=True)
     wb = Workbook()
     ws = wb.active
-    ws.title = "Товары"
+    ws.title = PRODUCTS_SHEET
     _sheet(ws, PRODUCT_HEADERS, product_rows(products), [48, 18, 10, 14, 9, 20, 40, 19])
     for (cell,) in ws.iter_rows(min_row=2, min_col=3, max_col=3):
         cell.number_format = "#,##0.00"
-    _sheet(wb.create_sheet("Изменения"), CHANGE_HEADERS, change_rows(changes), [19, 16, 48, 10, 10, 40])
+    _sheet(wb.create_sheet(CHANGES_SHEET), CHANGE_HEADERS, change_rows(changes), [19, 16, 48, 10, 10, 40])
     tmp = path.with_suffix(".tmp.xlsx")
     wb.save(tmp)
     tmp.replace(path)  # таблица не окажется полузаписанной, если её как раз открыли
@@ -132,8 +134,8 @@ def to_gsheet(
 
     book = gspread.service_account(filename=credentials).open_by_key(sheet_id)
     for title, headers, rows in (
-        ("Товары", PRODUCT_HEADERS, product_rows(products)),
-        ("Изменения", CHANGE_HEADERS, change_rows(changes)),
+        (PRODUCTS_SHEET, PRODUCT_HEADERS, product_rows(products)),
+        (CHANGES_SHEET, CHANGE_HEADERS, change_rows(changes)),
     ):
         try:
             ws = book.worksheet(title)

@@ -83,7 +83,8 @@ def parse_product(html: str, url: str) -> Product:
     if "UPC" not in info:
         raise ParseError(f"no UPC on {url}")
     rating_tag = main.select_one("p.star-rating")
-    rating_cls = next((c for c in (rating_tag.get("class", []) if rating_tag else []) if c in RATINGS), "")
+    # рейтинг — в классе тега: «star-rating Three» → 3; нет тега или класса — 0
+    rating_classes = rating_tag.get("class", []) if rating_tag else []
     crumbs = soup.select("ul.breadcrumb li a")
     price_tag = main.select_one("p.price_color")
     return Product(
@@ -91,7 +92,7 @@ def parse_product(html: str, url: str) -> Product:
         title=main.h1.get_text(strip=True),
         price=_price(price_tag.get_text() if price_tag else info.get("Price (incl. tax)", "")),
         stock=_stock(info.get("Availability", "")),
-        rating=RATINGS.get(rating_cls, 0),
+        rating=next((RATINGS[c] for c in rating_classes if c in RATINGS), 0),
         category=crumbs[-1].get_text(strip=True) if len(crumbs) >= 3 else "",
         url=url,
     )
