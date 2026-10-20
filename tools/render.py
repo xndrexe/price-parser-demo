@@ -1,8 +1,7 @@
-"""Рисует снимки для README из настоящих данных последнего запуска.
+"""Рисует снимки таблиц для README из настоящих данных последнего запуска.
 
 .venv/bin/python tools/render.py   # после python -m pricewatch; HTML → build/screens/
-Уведомление — тот же текст, что уходит в Telegram (notify.format_changes),
-таблица — первые строки выгруженного Excel.
+Таблица — первые строки выгруженного Excel; уведомление снято в настоящем Telegram.
 """
 
 from __future__ import annotations
@@ -16,25 +15,13 @@ from openpyxl import load_workbook
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from pricewatch import config, export, notify, store  # noqa: E402
+from pricewatch import config, export, store  # noqa: E402
 
 OUT = ROOT / "build" / "screens"
 
 CSS = """
 * { box-sizing: border-box; margin: 0; }
 body { font: 15px/1.38 Inter, 'Noto Color Emoji', sans-serif; background: #fff; }
-.phone { width: 390px; background: linear-gradient(160deg, #a3c4d1 0%, #b9d3c4 50%, #8fa9b7 100%); }
-.bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: #fff;
-  border-bottom: 1px solid #e3e3e3; }
-.ava { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-size: 20px;
-  background: linear-gradient(135deg, #5b8def, #2f5597); color: #fff; }
-.bar b { font-size: 16px; display: block; }
-.bar span { color: #8a8a8a; font-size: 13px; }
-.chat { padding: 12px 8px 16px; display: flex; flex-direction: column; gap: 6px; }
-.msg { max-width: 94%; padding: 7px 10px 6px; border-radius: 16px; background: #fff; white-space: pre-wrap;
-  border-bottom-left-radius: 5px; box-shadow: 0 1px 1px rgba(0,0,0,.12); word-wrap: break-word; }
-.msg a { color: #2a7bd1; text-decoration: none; }
-.t { float: right; margin: 6px 0 -4px 10px; font-size: 11px; color: #9aa59a; }
 table { border-collapse: collapse; font: 12px/1.3 Inter, sans-serif; margin: 12px; }
 td, th { border: 1px solid #d4d4d4; padding: 5px 8px; white-space: nowrap; max-width: 330px;
   overflow: hidden; text-overflow: ellipsis; }
@@ -48,15 +35,6 @@ td.num { text-align: right; }
 
 def page(body: str) -> str:
     return f"<!doctype html><meta charset=utf-8><style>{CSS}</style>{body}"
-
-
-def render_chat(messages: list[str], time: str) -> str:
-    bubbles = "".join(f'<div class="msg">{m}<span class="t">{time}</span></div>' for m in messages)
-    return page(
-        '<div class="phone"><div class="bar"><div class="ava">📊</div>'
-        "<div><b>Мониторинг цен</b><span>бот</span></div></div>"
-        f'<div class="chat">{bubbles}</div></div>'
-    )
 
 
 def render_sheet(path: Path, sheet: str, rows: int, skip_cols: tuple[int, ...] = (), only: str = "") -> str:
@@ -86,17 +64,11 @@ def render_sheet(path: Path, sheet: str, rows: int, skip_cols: tuple[int, ...] =
 def main() -> None:
     cfg = config.load()
     conn = store.connect(cfg.db_path)
-    rows = store.recent_changes(conn, limit=30)
+    rows = store.recent_changes(conn, limit=1)
     conn.close()
     if not rows:
         sys.exit("нет изменений в базе: запусти парсер дважды")
-    rows = rows[::-1]  # в базе свежие сверху, в уведомлении — по порядку
-    changes = [
-        store.Change(*(r[k] for k in ("ts", "upc", "title", "url", "kind", "old", "new"))) for r in rows
-    ]
     OUT.mkdir(parents=True, exist_ok=True)
-    time = changes[0].ts[11:16]
-    (OUT / "1-uvedomlenie.html").write_text(render_chat(notify.format_changes(changes), time), "utf-8")
     (OUT / "2-tablitsa.html").write_text(
         render_sheet(cfg.excel_path, export.PRODUCTS_SHEET, 14, skip_cols=(6,), only="Travel"), "utf-8"
     )

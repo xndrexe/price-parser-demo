@@ -22,7 +22,7 @@ def main() -> None:
         for html in sorted(SRC.glob("*.html")):
             page.goto(html.as_uri())
             page.wait_for_load_state("networkidle")
-            target = page.locator(".phone, .sheet").first
+            target = page.locator(".sheet").first
             target.screenshot(path=str(DST / f"{html.stem}.png"))
             print(DST / f"{html.stem}.png")
         browser.close()

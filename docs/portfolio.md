@@ -8,4 +8,6 @@
 
 Проверено: сбор и Excel — на живом сайте; Telegram — вживую на тестовом боте; Google Таблица — на тестах без подключения.
 
+Снимки: docs/screens/1-uvedomlenie.png (настоящий Telegram), 2-tablitsa.png, 3-izmeneniya.png.
+
 Стек: Python, requests, BeautifulSoup, SQLite, openpyxl, gspread.
