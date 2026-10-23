@@ -62,7 +62,9 @@ def run_once(cfg: config.Settings, session: requests.Session | None = None) -> R
     conn = store.connect(cfg.db_path)
     try:
         changes = store.save_snapshot(conn, res.products, res.complete)
-        products, history = store.current(conn), store.recent_changes(conn)
+        # уведомление обещает полный список на листе — изменения этого прохода не режем
+        history = store.recent_changes(conn, max(store.HISTORY_ROWS, len(changes)))
+        products = store.current(conn)
     finally:
         conn.close()
 

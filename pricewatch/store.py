@@ -114,5 +114,9 @@ def current(conn: sqlite3.Connection) -> list[sqlite3.Row]:
     return list(conn.execute("SELECT * FROM products WHERE gone=0 ORDER BY category, title"))
 
 
-def recent_changes(conn: sqlite3.Connection, limit: int = 500) -> list[sqlite3.Row]:
+# сколько последних изменений идёт на лист «Изменения»; изменения одного прохода — все, даже если их больше
+HISTORY_ROWS = 500
+
+
+def recent_changes(conn: sqlite3.Connection, limit: int = HISTORY_ROWS) -> list[sqlite3.Row]:
     return list(conn.execute("SELECT * FROM changes ORDER BY id DESC LIMIT ?", (limit,)))

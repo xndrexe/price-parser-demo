@@ -7,7 +7,7 @@ from conftest import make_book, make_list
 from openpyxl import load_workbook
 
 from pricewatch import __main__ as app
-from pricewatch import config
+from pricewatch import config, store
 
 ROOT = "https://shop.test/catalogue/"
 
@@ -91,6 +91,17 @@ def test_two_runs_end_to_end(cfg):
     assert {r[1] for r in changes[1:]} == {"Цена", "Наличие"}
     price = next(r for r in changes[1:] if r[1] == "Цена")
     assert (price[3], price[4]) == (10.0, 8.0)  # числом, а не текстом — работают фильтры
+
+
+def test_changes_sheet_holds_whole_run(monkeypatch, cfg):
+    # сообщение обещает «полный список на листе», значит изменения прохода не режутся пределом листа
+    monkeypatch.setattr(store, "HISTORY_ROWS", 1)
+    http = FakeHTTP(shop())
+    app.run_once(cfg, http)
+    http.pages = shop(price_a=8.0, stock_b=0)
+    assert app.run_once(cfg, http).changes == 2
+    changes = list(load_workbook(cfg.excel_path)["Изменения"].values)
+    assert len(changes[1:]) == 2
 
 
 def test_dead_site_keeps_old_table(cfg):
