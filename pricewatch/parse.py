@@ -63,7 +63,8 @@ def _price(text: str) -> float:
 
 
 def _stock(text: str) -> int:
-    # «In stock (22 available)» → 22; «(1,234 available)» → 1234; «Out of stock» → 0
+    # «In stock (22 available)» → 22; «(1,234 available)» → 1234; «Out of stock» → 0;
+    # «In stock» без числа (или пустая строка) → 1: товар есть, сколько — неизвестно
     if "out of stock" in text.lower():
         return 0
     m = re.search(r"\((\d+(?:[,\s]\d{3})*)", text)

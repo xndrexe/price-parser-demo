@@ -1,7 +1,8 @@
 """Рисует снимки таблиц для README из настоящих данных последнего запуска.
 
-.venv/bin/python tools/render.py   # после python -m pricewatch; HTML → build/screens/
-Таблица — первые строки выгруженного Excel; уведомление снято в настоящем Telegram.
+.venv/bin/python tools/render.py   # после двух запусков python -m pricewatch; HTML → build/screens/
+Нужны Excel и хотя бы одно изменение в базе. «Товары» — одна категория (Travel),
+«Изменения» — свежие сверху, без столбца ссылок; уведомление снято в настоящем Telegram.
 """
 
 from __future__ import annotations
